@@ -1,0 +1,18 @@
+[submodule "frontend-Vue-EntrenaMe"]
+	path = frontend-Vue-EntrenaMe
+	url = https://github.com/2n-DAW/frontend-Vue-EntrenaMe.git
+[submodule "frontend-React-EntrenaMe"]
+	path = frontend-React-EntrenaMe
+	url = https://github.com/2n-DAW/frontend-React-EntrenaMe.git
+[submodule "backend-Sboot-EntrenaMe"]
+	path = backend-Sboot-EntrenaMe
+	url = https://github.com/2n-DAW/backend-Sboot-EntrenaMe.git
+[submodule "backend-Sboot-Notification-EntrenaMe"]
+	path = backend-Sboot-Notification-EntrenaMe
+	url = https://github.com/2n-DAW/backend-Sboot-Notification-EntrenaMe.git
+[submodule "backend-proxy-inverso"]
+	path = backend-proxy-inverso
+	url = https://github.com/2n-DAW/backend-proxy-inverso.git
+[submodule "backend-laravel-EntrenaMe"]
+	path = backend-laravel-EntrenaMe
+	url = https://github.com/2n-DAW/backend-laravel-EntrenaMe.git
