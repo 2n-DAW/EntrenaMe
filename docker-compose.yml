@@ -1,0 +1,194 @@
+version: "3.8"
+
+services:
+  mysqldb:
+    image: mysql:8.0
+    container_name: mysql-entrename
+    restart: unless-stopped
+    command:
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password # Fuerza a utilizar mysql_native_password y no caching_sha2_password. Para solventar error con laravel
+    # env_file: ./.env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQLDB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQLDB_DATABASE}
+      MYSQL_ROOT_HOST: '%' # Permite conexiones remotas
+    volumes:
+      - ./db/db_init.sql:/docker-entrypoint-initdb.d/db_init.sql
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - entrename-network
+
+  springboot:
+    build:
+      context: ./backend-Sboot-EntrenaMe
+      dockerfile: Dockerfile.spring
+    container_name: backend-springboot-entrename
+    restart: unless-stopped
+    depends_on:
+      - mysqldb
+    # env_file: ./.env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysqldb:3306/${MYSQLDB_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQLDB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQLDB_ROOT_PASSWORD}
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQLDialect
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none # Deshabilita las migraciones automáticas
+      # SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET}
+      ACCESS_TOKEN_EXPIRATION: ${ACCESS_TOKEN_EXPIRATION}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+      REFRESH_TOKEN_EXPIRATION: ${REFRESH_TOKEN_EXPIRATION}
+      LARAVEL_API_ENDPOINT: ${LARAVEL_API_ENDPOINT}
+      MAILGUN_API_ENDPOINT: ${MAILGUN_API_ENDPOINT}
+    volumes:
+      - ./backend-Sboot-EntrenaMe:/app # Para desarrollo, monta el código fuente
+      # - ./backend_springboot_2/.m2:/root/.m2 # Cache de dependencias Maven
+    ports:
+      - "8080:8080"
+    entrypoint: ["./wait-for-it.sh", "mysqldb:3306", "--", "mvn", "spring-boot:run"]
+    # Para desarrollo
+    stdin_open: true  # Mantiene stdin abierto. Para interactuar con el contenedor (docker exec -it <container_id> bash)
+    tty: true         # Asigna un pseudo-terminal
+    networks:
+      - entrename-network
+
+  laravel:
+    build:
+      context: ./backend-laravel-EntrenaMe
+      dockerfile: Dockerfile.laravel
+    container_name: backend-laravel-entrename
+    restart: unless-stopped
+    depends_on:
+      - mysqldb
+    # env_file: ./.env
+    environment:
+      DB_HOST: mysqldb
+      DB_PORT: 3306
+      DB_DATABASE: ${MYSQLDB_DATABASE}
+      DB_USERNAME: ${MYSQLDB_USER}
+      DB_PASSWORD: ${MYSQLDB_ROOT_PASSWORD}
+      JWT_SECRET: ${ACCESS_TOKEN_SECRET}
+      JWT_EXPIRE_TIME: ${ACCESS_TOKEN_EXPIRATION}
+    volumes:
+      - ./backend-laravel-EntrenaMe:/var/www # Para desarrollo, monta el código fuente
+      - /var/www/vendor # Excluye vendor para evitar conflictos
+    ports:
+      - "8000:8000"
+    entrypoint: ["./wait-for-it.sh", "mysqldb:3306", "--", "php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    # Para desarrollo
+    stdin_open: true  # Mantiene stdin abierto. Para interactuar con el contenedor (docker exec -it <container_id> bash)
+    tty: true         # Asigna un pseudo-terminal
+    networks:
+      - entrename-network
+
+  mailgun:
+    build:
+      context: ./backend-Sboot-Notification-EntrenaMe
+      dockerfile: Dockerfile.mailgun
+    container_name: backend-mailgun-entrename
+    restart: unless-stopped
+    depends_on:
+      - springboot
+    # env_file: ./.env
+    environment:
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+    volumes:
+      - ./backend-Sboot-Notification-EntrenaMe:/app # Para desarrollo, monta el código fuente
+    ports:
+      - "8081:8081"
+    command: ["mvn", "spring-boot:run"]
+    # Para desarrollo
+    stdin_open: true  # Mantiene stdin abierto. Para interactuar con el contenedor (docker exec -it <container_id> bash)
+    tty: true         # Asigna un pseudo-terminal
+    networks:
+      - entrename-network
+
+  proxy:
+    build:
+      context: ./backend-proxy-inverso
+      dockerfile: Dockerfile.proxy
+    container_name: backend-proxy-entrename
+    restart: unless-stopped
+    depends_on:
+      - vue
+      - react
+    # env_file: ./.env
+    environment:
+      PORT_PROXY: ${PORT_PROXY}
+      URL_PROXY: ${URL_PROXY}
+      URL_VUE: ${URL_VUE}
+      URL_REACT: ${URL_REACT}
+    volumes:
+      - ./backend-proxy-inverso:/app # Para desarrollo, monta el código fuente
+      - /app/node_modules # Excluye node_modules para evitar conflictos
+    ports:
+      - "3000:3000"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    # Para desarrollo
+    stdin_open: true  # Mantiene stdin abierto. Para interactuar con el contenedor (docker exec -it <container_id> bash)
+    tty: true         # Asigna un pseudo-terminal
+    networks:
+      - entrename-network
+
+  vue:
+    build:
+      context: ./frontend-Vue-EntrenaMe
+      dockerfile: Dockerfile.vue
+    container_name: frontend-vue-entrename
+    restart: unless-stopped
+    depends_on:
+      - springboot
+      - laravel
+    # env_file: ./.env
+    environment:
+      VITE_API_URL_ADMIN: ${VITE_API_URL_ADMIN}
+      VITE_API_URL_CLIENT: ${VITE_API_URL_CLIENT}
+    volumes:
+      - ./frontend-Vue-EntrenaMe:/app # Para desarrollo, monta el código fuente
+      - /app/node_modules # Excluye node_modules para evitar conflictos
+    ports:
+      - "3001:3001"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    # Para desarrollo
+    stdin_open: true  # Mantiene stdin abierto. Para interactuar con el contenedor (docker exec -it <container_id> bash)
+    tty: true         # Asigna un pseudo-terminal
+    networks:
+      - entrename-network
+
+  react:
+    build:
+      context: ./frontend-React-EntrenaMe
+      dockerfile: Dockerfile.react
+    container_name: frontend-react-entrename
+    restart: unless-stopped
+    depends_on:
+      - springboot
+      - laravel
+    # env_file: ./.env
+    environment:
+      VITE_API_URL_ADMIN: ${VITE_API_URL_ADMIN}
+      VITE_API_URL_CLIENT: ${VITE_API_URL_CLIENT}
+    volumes:
+      - ./frontend-React-EntrenaMe:/app # Para desarrollo, monta el código fuente
+      - /app/node_modules # Excluye node_modules para evitar conflictos
+    ports:
+      - "3002:3002"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    # Para desarrollo
+    stdin_open: true  # Mantiene stdin abierto. Para interactuar con el contenedor (docker exec -it <container_id> bash)
+    tty: true         # Asigna un pseudo-terminal
+    networks:
+      - entrename-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  entrename-network:
+    driver: bridge
